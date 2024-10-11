@@ -777,10 +777,7 @@ class XpandLaTeX:
 
     def read_aux(self):
         aux_file = re.sub(r'\.tex$', '.aux', self.inputFileName)
-        
-        if hasattr(self, 'auxdir'):
-            aux_file = self.auxdir/aux_file
-
+        if self.auxdir: aux_file = self.auxdir + '/' + aux_file
         aux_xpander = XpandLaTeX(copy=self)
         aux_xpander.process_file(aux_file, type="aux")
         self.update_definitions(aux_xpander)
@@ -825,7 +822,8 @@ class XpandLaTeX:
         # get the filename
         tok = self.get_token('parsing')
         if not tok == '{': self.die(r'\input: unexpected token <' + tok + '>')
-        file = ''.join(self.get_tokens_to_match(['}'])) + ".tex"
+        file = ''.join(self.get_tokens_to_match(['}']))
+        if file[-4] != '.': file += ".tex"
 
         file_xpander = XpandLaTeX(copy=self)
         file_xpander.process_file(file)
@@ -858,6 +856,7 @@ class XpandLaTeX:
     
         # read the file
         con_file = re.sub(r'\.tex$', '.'+type, self.inputFileName)
+        if self.auxdir: con_file = self.auxdir + '/' + con_file
         con_xpander = XpandLaTeX(copy=self)
         con_xpander.process_file(con_file)
         # self.update_definitions(con_xpander)  # no definitions or labels in contents files?
@@ -888,6 +887,7 @@ class XpandLaTeX:
         self.get_tokens_to_match(['}'])
 
         bbl_file = re.sub(r'\.tex$', '.bbl', self.inputFileName)
+        if self.auxdir: bbl_file = self.auxdir + '/' + bbl_file
         bbl_xpander = XpandLaTeX(copy=self)
         bbl_xpander.process_file(bbl_file)
 
@@ -1077,6 +1077,7 @@ class XpandLaTeX:
     mergeInputs = False              # don't read input files 
     mergeTOCs = True                 # do read .toc etc.
     mergeBBL = True             # do read bbl 
+    auxdir = '.'
 
     def process_defaults(self, type="tex"):
         if type == "tex":
@@ -1269,6 +1270,7 @@ class XpandLaTeX:
                                     	
             self.debugLevel         	= copy.debugLevel
             self.debugFile          	= copy.debugFile
+            self.auxdir                 = copy.auxdir
 
             self.update_definitions(copy)
 
@@ -1328,7 +1330,7 @@ argparser.add_argument('-f', '--macro-file', action='append', default=[], metava
 argparser.add_argument('-D', dest='debug', type=int, default=0, metavar="#",
                   help='debug level')
 
-argparser.add_argument('--auxdir', dest='auxdir', default=Path('.'), type=Path)
+argparser.add_argument('--auxdir', dest='auxdir', default='.', type=str)
 
 
 args = argparser.parse_args()
