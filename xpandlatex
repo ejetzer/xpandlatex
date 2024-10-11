@@ -777,6 +777,9 @@ class XpandLaTeX:
 
     def read_aux(self):
         aux_file = re.sub(r'\.tex$', '.aux', self.inputFileName)
+        
+        if hasattr(self, 'auxdir'):
+            aux_file = self.auxdir/aux_file
 
         aux_xpander = XpandLaTeX(copy=self)
         aux_xpander.process_file(aux_file, type="aux")
@@ -1333,6 +1336,7 @@ args = argparser.parse_args()
 
 xp = XpandLaTeX()
 xp.debugLevel = args.debug
+xp.auxdir = args.auxdir
 
 if args.expand_all is not None:
     xp.expandMacros = (args.expand_all == 'on')
@@ -1375,10 +1379,9 @@ for file in args.macro_file:
     macro_xp.process_file(file, type="macro")
     xp.update_definitions(macro_xp)
 
-auxdir = args.auxdir
 for file in args.files:
     if re.fullmatch(r'.*\.aux', file):
-        xp.process_file(auxdir/file, type="aux")
+        xp.process_file(file, type="aux")
     elif re.fullmatch(r'.*\.cfg', file):
         xp.process_file(file, type="macro")
     elif re.fullmatch(r'.*\.tex', file):
