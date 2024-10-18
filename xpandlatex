@@ -823,7 +823,7 @@ class XpandLaTeX:
         tok = self.get_token('parsing')
         if not tok == '{': self.die(r'\input: unexpected token <' + tok + '>')
         file = ''.join(self.get_tokens_to_match(['}']))
-        if file[-4] != '.': file += ".tex"
+        if Path(file) != '.': file += ".tex"
 
         file_xpander = XpandLaTeX(copy=self)
         file_xpander.process_file(file)
