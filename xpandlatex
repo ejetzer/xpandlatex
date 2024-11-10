@@ -820,7 +820,12 @@ class XpandLaTeX:
         # get the filename
         tok = self.get_token('parsing')
         if not tok == '{': self.die(r'\input: unexpected token <' + tok + '>')
-        file = ''.join(self.get_tokens_to_match(['}'])) + ".tex"
+        file = ''.join(self.get_tokens_to_match(['}']))
+
+        # Allow input of non-tex files, but still default with tex
+        # This could be done better with pathlib
+        if file[-4] != '.':
+            file += '.tex'
 
         file_xpander = XpandLaTeX(copy=self)
         file_xpander.process_file(file)
