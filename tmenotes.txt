@@ -1,0 +1,403 @@
+################################################################################################
+#
+# These notes are copied from the original tme implementation, in case helpful.
+
+#
+# # tme has only a limited understanding of TeX.  It handles macro
+# # definitions and uses such as
+# #
+# #	% cat macros.tex
+# #	% macro definitions
+# # 	\def\h{{\sf h}}
+# # 	\def\H{{\sf H}}
+# # 	\def\Jac[#1]{{\bf J} \Bigl[ #1 \Bigr]}
+# #	\newcommand{\papertitle}[1]{{\it #1\/}}
+# #	\renewcommand{\thesistitle}[1]{{\it #1\/}}
+# #
+# #	% cat input.tex
+# #	% text to expand
+# # 	$\Jac[\H(\h)]$
+# #	\bibitem{Choptuik-91}%%%
+# #	M.~W.~Choptuik,
+# #	% \papertitle{Consistency of Finite-Difference Solutions
+# #	%	      of Einstein's Equations},
+# #	Phys.~Rev.~D {\bf 44}(10), 3124--3135 (1991).
+# #
+# # Notice that:
+# # - Nested macros are ok, i.e. macros may reference other macros.
+# # - Both TeX's native \def and LaTex's \newcommand/\renewcommand are
+# #   supported.
+# # - For \def, "delimited" macro parameters (eg for \Jac above) are
+# #   supported, as per pp. 202-204 of the TeXbook.
+# # - Macro arguments can span multiple lines of text.  (This is hard
+# #   to do if you try to fake tme with editor scripts.)
+# #
+# # For the example just given, the output of tme is
+# #
+# #	% tme macros.tex <input.tex
+# #	% text to expand
+# #	${\bf J} \Bigl[ {\sf H}({\sf h}) \Bigr]$
+# #	\bibitem{Choptuik-91}%%%
+# #	M.~W.~Choptuik,
+# #	% \papertitle{Consistency of Finite-Difference Solutions
+# #	%	      of Einstein's Equations},
+# #	Phys.~Rev.~D {\bf 44}(10), 3124--3135 (1991).
+# #
+# # or if macros should be expanded in comments (see below),
+# #
+# #	% tme -c macros.tex <input.tex
+# #	% text to expand
+# #	${\bf J} \Bigl[ {\sf H}({\sf h}) \Bigr]$
+# #	\bibitem{Choptuik-91}%%%
+# #	M.~W.~Choptuik,
+# #	% {\it Consistency of Finite-Difference Solutions
+# #	%	      of Einstein's Equations\/},
+# #	Phys.~Rev.~D {\bf 44}(10), 3124--3135 (1991).
+# #
+# # Among (many) other things, tme does _not_ know about \catcode, any
+# # of TeX's variant macro-defining commands \edef, or \xdef, or the \def
+# # modifiers \long or \outer.  tme recognizes \gdef, but treats it as
+# # identical to \def.  More precisely, tme treats _all_ macros as global.
+# # tme makes no attempt to handle conditional macros.  tme allows only
+# # letter sequences or single non-letters as macro names.
+# #
+# # tme discards TeX comments (and anything else except macro definitions)
+# # in macro definition files.  When reading text from standard input to
+# # be macro-expanded, tme by default transparently copies TeX comments
+# # to standard output, but if the  -c  option is specified, tme instead
+# # expands macros in comments here as well as elsewhere in the input text.
+# #
+# # tme doesn't (yet) know about LaTex's \newenvironment/\renewenvironment.
+# # I might add this feature to tme in the future.
+# #
+# # Right now tme doesn't interpret \input in any way.  The "texexpand"
+# # program can be used to expand \input files if desired.  I might add
+# # this feature to tme in the future.
+# #
+# # tme's output may contain very long lines.  Right now tme doesn't do
+# # anything special about this, but I might add an output-line-splitting
+# # option sometime in the future.  (Or I might write a separate program
+# # to do it.)
+# #
+# # Comments, suggestions, improvements, bug fixes, etc, are always welcome.
+# #
+# 
+# #
+# # Bugs (user-level):
+# # - tme is painfully slow.  On my computer it takes $\sim 5$ times as
+# #   long to process a file as LaTeX does to _typeset_ it!  I wrote it
+# #   without any particular concern for efficiency: there are lots of
+# #   perl array and hash-table copies floating around, and a number of
+# #   functions use append-to-scratch-array quadratic algorithms.  But
+# #   it's still vastly faster than hacking the macro expansion in a
+# #   text editor...
+# # - Error checking?  If you have to ask, tme doesn't have enough for you!
+# #   tme is easily confused by TeX syntax errors.  Don't try running your
+# #   text through tme until TeX is reasonably happy with it (no fatal
+# #   errors at least).
+# # - tme's handling of blanks in the input is only an approximation to
+# #   TeX's.  In particular, there may be problems with macro definitions
+# #   where blanks separate \def, the macro name, the macro parameters,
+# #   and/or the macro expansion.  Basically, tme ignores blanks following
+# #   the \def and the macro name token, but not elsewhere.  The simple case
+# #   (with no macro arguments)
+# #	\def \foo {blah blah blah}
+# #   should thus be ok: tme ignores the blanks, which matches what TeX
+# #   seems to do, though not what a naive reading of the TeXbook would
+# #   suggest.  (I think TeX ignores the blanks when tokenizing the input;
+# #   the TeXbook's description of input tokenizing on pp. 46-47 doesn't
+# #   discuss the handling of macro definitions.)
+# #   The cases
+# #	\def \foo#1 {blah #1 blah}
+# #	\def \foo #1 {blah #1 blah}
+# #   are accepted, and I believe tme handles them correctly, but note that
+# #   "correctly" here involves quite different semantics from the previous
+# #   cases: here the blank following the #1 is _not_ ignored, rather it
+# #   changes the semantics of how the macro argument is delimited, as
+# #   discussed in the TeXbook (pp. 203-204).  For macros defined with
+# #   \newcommand or \renewcommand, tme ignores the blanks in any of
+# #	\newcommand \foo {blah blah}
+# #	\renewcommand \foo {blah blah}
+# #	\newcommand \foo [1] {blah #1 blah}
+# #	\renewcommand \foo [1] {blah #1 blah}
+# # - tme doesn't do anything special for macro definitions appearing in
+# #   text to be expanded.  This means that if a macro \foo has been defined,
+# #   the text-to-be-expanded
+# #	\def\foo{new definition}
+# #   won't work properly.  I could fix this if someone cares about it...
+# # - Please note the disclaimers of warranty in the (GNU public license)
+# #   copyright statement below.  tme works well enough to process my own
+# #   papers, but if it mangles your life's masterpiece and costs you the
+# #   Nobel prize, Big Contract, Thesis, and/or Job, don't sue me.
+# # - Seriously, before submitting tme output for publication I suggest
+# #   you check that it's semantically identical to the tme input.  The
+# #   easy way to do this is to just TeX/LaTeX both files and compare
+# #   the dvi files with 'cmp -l'.  (You could also dvips and compare
+# #   the postscript files.)  Except for the dvi timestamps, the files
+# #   should be byte-for-byte identical.  If they're not, please report
+# #   this to me as a tme bug.
+# #
+# # Bugs (implementation):
+# # - I did _try_ to use the Getopt library routines to parse the argument
+# #   list, but they don't seem to be able to handle switches which _don't_
+# #   allow a space between the switch and the (optional) argument.  Sigh...
+# # - There's a fair bit of duplicated code between  define_macro_via_def()
+# #   and  define_macro_via_newcommand() .
+# #
+# 
+# ###############################################################################
+# 
+# #
+# # Copyright (C) 1996, Jonathan Thornburg <thornbur@theory.physics.ubc.ca>
+# #
+# # This program is free software; you can redistribute it and/or modify
+# # it under the terms of the GNU General Public License as published by
+# # the Free Software Foundation; either version 2 of the License, or
+# # (at your option) any later version.
+# #
+# # This program is distributed in the hope that it will be useful,
+# # but WITHOUT ANY WARRANTY; without even the implied warranty of
+# # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# # GNU General Public License for more details.
+# #
+# # You should have received a copy of the GNU General Public License
+# # along with this program; see the file COPYING.  If not, write to
+# # the Free Software Foundation, 59 Temple Place - Suite 330, Boston,
+# # MA 02111-1307, USA.
+# #
+# 
+# ###############################################################################
+# 
+# #
+# # <<<user documentation>>>
+# # <<<copyright>>>
+# # <<<this table of contents>>>
+# # <<<overall design notes>>>
+# # <<<design notes for data types>>>
+# # main - driver
+# #
+# # <<<global data for the macro engine>>>
+# # is_macro - is a given token defined as a macro?
+# # define_macro_via_def - define a macro via \def
+# # define_macro_via_newcommand - define a macro via \newcommand or \renewcommand
+# # get_macro_args - get a macro's arguments
+# # expand_macro - expand a macro
+# #
+# # match_tokens - match input stream against token list
+# # get_tokens_to_delimiter - get tokens until (and including) delimiter
+# # get_token_group - get a {}-balanced token group
+# # skipBlankTokens - skip blank (actully any whitespace) tokens
+# #
+# # subarray_eq - are two subarrays element-by-element eq?
+# #
+# # <<<design notes on comment handling>>
+# # <<<global data for the input routines>>>
+# # tme_die - die() with input file/line message
+# # set_comment_handling - set the comment-handling policy for the input routines
+# # open_input_file - open an input file (also updates input-comment handling)
+# # close_input_file - close an input file
+# # push_tokens - push back a token or tokens into the input stream
+# # getToken - get the next (non-comment) token from the input stream
+# # get_bare_token - get the next bare-token from the input stream
+# #
+# # put_token - output a token
+# #
+# 
+# ###############################################################################
+# 
+# #
+# # <<<overall design notes>>>
+# #
+# 
+# #
+# # TeX uses a 2-stage processing scheme, where input characters are
+# # first tokenized in TeX's "mouth", then macros are expanded on the
+# # token stream in TeX's "stomach".  tme follows a similar design,
+# # since otherwise we'd have prefix problems, eg macros \e and \end
+# # would be confused.
+# #
+# 
+# #
+# # The tme macro engine operates by reading the input token stream,
+# # and copying it to the output, except that when a previously defined
+# # macro is seen, the macro is expanded and the expansion is "pushed back"
+# # FIFO-fashion into the input stream, since it might itself contain
+# # further macros.
+# #
+# # Some examples may clarify this:
+# #
+# #
+# # First, consider a simple case:
+# #
+# # macro defn:	\def\foo{123}
+# # input:		\a\foo\b
+# #
+# # unread input		read tokens	output tokens	action
+# # ------------		-----------	-------------	------
+# # \a\foo\b
+# # \foo\b			\a			read token
+# # 					\a		copy token to output
+# # \b			\foo				read token
+# # 123\b							push macro expansion
+# # 							   back into input
+# # 			123\b				read tokens
+# # 					123\b		copy tokens to output
+# #
+# #
+# # Next, consider a nested macro:
+# #
+# # macro defns:	\def\h{{\sf h}}
+# # 		\def\H{{\sf H}}
+# # 		\def\Jac[#1]{{\sf J} \Bigl[ #1 \Bigr]}
+# # input:		$\Jac[\H(\h)]$
+# #
+# # unread input		read tokens	output tokens	action
+# # ------------		-----------	-------------	------
+# # $\Jac[\H(\h)]$
+# # \Jac[\H(\h)]$		$				read token
+# # 					$		copy token to output
+# # [\H(\h)]$		\Jac				read token
+# # \H(\h)]$		[				read macro delimiter
+# # 							   token list
+# # ]$			\H(\h)				read macro arg tokens
+# # $			]				read macro delim token
+# # {\sf J} \Bigl[ \H(\h) \Bigr]$				push macro expansion
+# # 							   back into input
+# # \H(\h) \Bigr]$		{\sf J} \Bigl[ 			read tokens
+# # 					{\sf J} \Bigl[	copy tokens to output
+# # (\h) \Bigr]$		\H				read token
+# # {\sf H}(\h) \Bigr]$					push macro expansion
+# # 							   back into input
+# # \h) \Bigr]$		{\sf H}(			read tokens
+# # 					{\sf H}(	copy tokens to output
+# # ) \Bigr]$		\h				read token
+# # {\sf h}) \Bigr]$					push macro expansion
+# # 							   back into input
+# # 			{\sf h}) \Bigr]$		read tokens
+# # 					{\sf h}) \Bigr]$ copy tokens to output
+# #
+# # Notice how pushed-back input is pushed back so as to be read *before*
+# # the unread input.
+# #
+# #
+# # Finally, consider a simple macro, invoked with blanks (denoted here by _)
+# # separating the parameters:
+# #
+# # macro defn:	\def\foo#1{#1#1}
+# # input:		\a\foo_\x\b
+# # unread input		read tokens	output tokens	action
+# # ------------		-----------	-------------	------
+# # \a\foo_\x\b
+# # \foo_\x\b		\a				read token
+# # \foo_\x\b				\a		copy token to output
+# # _\x\b			\foo				read token
+# # \x\b			_				skip over blank token
+# # \b			\x				read macro arg token
+# # \x\x\b						push macro expansion
+# # 							   back into input
+# # 			\x\x\b				read tokens
+# # 					\x\x\b		copy tokens to output
+# #
+# # Notice how the blank between \foo and \x was skipped over (discarded)
+# # in parsing the macro arguments.
+# #
+# # Actually, this last example doesn't quite work the way we've just
+# # described it.  We implement "skipping over blank tokens" by reading
+# # until a non-blank token is found, then pushing that token back into
+# # the input, so the example really works like this:
+# #
+# # macro defn:	\def\foo#1{#1#1}
+# # input:		\a\foo_\x\b
+# # unread input		read tokens	output tokens	action
+# # ------------		-----------	-------------	------
+# # \a\foo_\x\b
+# # \foo_\x\b		\a				read token
+# # \foo_\x\b				\a		copy token to output
+# # _\x\b			\foo				read token
+# # \x\b			_				read token,
+# # 							   see that it's blank,
+# # 							   discard it
+# # \b			\x				read token
+# # \x\b							push token
+# # 							   back into input
+# # \b			\x				read macro arg token
+# # \x\x\b						push macro expansion
+# # 							   back into input
+# # 			\x\x\b				read tokens
+# # 					\x\x\b		copy tokens to output
+# #
+# 
+# ###############################################################################
+# 
+# #
+# # <<<design notes for data types>>>
+# #
+# 
+# #
+# # tme uses the following main data types:
+# # - A "bare-token" is represented as a (scalar) nonempty perl character
+# #   string, the empty string representing EOF.  We don't bother with
+# #   TeX's separate character and category codes; we compare tokens as
+# #   character strings only.  A bare-token may be a TeX comment.
+# # - A "token" (with no qualifiers) is a bare-token, except that comments
+# #   may have been screened out.  See the input-routines comments for
+# #   details on how comments are handled.
+# # - A "token list" is represented as a (possibly empty) perl array of
+# #   tokens.
+# # - A "token group" is a {}-balanced token list.
+# #
+
+# ###############################################################################
+# ###############################################################################
+# ###############################################################################
+# 
+# #
+# # <<<design notes on comment handling>>
+# #
+# 
+# #
+# # The handling of comments is a tricky point in tme:
+# # - When we're reading macro-definition files, we want to ignore comments.
+# #   In particular, TeX ignores comments in it's "mouth", i.e. when tokenizing
+# #   the input, so comments never make it into macro definitions.  We want
+# #   to follow this same behavior.
+# # - When we're reading text from standard input to be macro-expanded, there
+# #   are two cases:
+# #   - By default, we want to transparently copy comments to standard output.
+# #     output.
+# #   - If the -c command line flag is specified, we want to treat comments
+# #     just like any other input text, i.e. we want to process their bodies
+# #     through our macro engine.
+# #
+# # We implement this as follows:
+# # - When we're reading macro-definition files,  get_bare_token()  returns
+# #   comment tokens containing the entire input-stream text text from '%'
+# #   through "\n" inclusive;  self.get_token()  then discards these tokens.
+# # - When we're reading TeX in which to expand macros:
+# #   - By default,  get_bare_token()  continues to return comment tokens
+# #     containing the entire input-stream text from '%' through "\n"
+# #     inclusive;  self.get_token()  then transparently copies these to the
+# #     output stream.
+# #   - If the -c command line flag is specified,  get_bare_token()  and
+# #      self.get_token()  give no special treatment to '%', it's just treated
+# #     as a normal single-character token and passed up into the macro
+# #     engine.
+# #
+# 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
